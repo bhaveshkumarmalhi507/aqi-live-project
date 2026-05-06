@@ -50,14 +50,13 @@ o3 = hourly.get("ozone", [0])[-1]
 # ========================
 values = [pm2_5, pm10, no2, so2, o3]
 
-# ❌ agar sab missing hain → skip row
+aqi = None  # default value
+
 if all(v is None for v in values):
     print("Skipping row: API data missing")
 else:
-    # ✔ data available → safe AQI calculation
     values = [v if v is not None else 0 for v in values]
     aqi = max(values)
-
 # ========================
 # 4. CREATE RECORD
 # ========================

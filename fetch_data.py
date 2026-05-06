@@ -50,14 +50,18 @@ o3 = hourly.get("ozone", [0])[-1]
 # ========================
 values = [pm2_5, pm10, no2, so2, o3]
 
-# ❌ IF ALL EMPTY → DO NOT SAVE ANYTHING
-if all(v is None for v in values):
-    print("Skipping row: API returned no data")
+# convert safe numeric values
+clean_values = [v for v in values if v is not None]
+
+# ❌ agar bilkul bhi data nahi hai
+if len(clean_values) == 0:
+    print("Skipping row: no valid AQI data")
 
 else:
-    # ✔ calculate AQI safely
+    # ✔ safe AQI calculation
     values = [v if v is not None else 0 for v in values]
     aqi = max(values)
+
 
     # ========================
     # ONLY CREATE RECORD HERE

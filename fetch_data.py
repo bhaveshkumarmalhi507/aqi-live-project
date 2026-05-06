@@ -1,95 +1,228 @@
-import requests
 import pandas as pd
-from datetime import datetime
+import requests
 import os
+from datetime import datetime
 
-# ========================
+# =========================
 # CONFIG
-# ========================
-API_KEY = os.getenv("API_KEY")
-CITY = "Karachi"
+# =========================
+OPENWEATHER_KEY = os.environ.get("OPENWEATHER_KEY")
+
 LAT = 24.8607
 LON = 67.0011
+CITY = "Karachi"
 
-file_path = "aqi_dataset.csv"
+RAW_FILE = "karachi_raw_data.csv"
+FINAL_FILE = "karachi_clean_dataset.csv"
 
-# ========================
-# 1. WEATHER API (SAFE)
-# ========================
-weather_url = "http://api.openweathermap.org/data/2.5/weather?q=Karachi&appid=1055a336d17d290b5102f6f66e5dcd58&units=metric"
+# =========================
+# FETCH WEATHER DATA
+# =========================
+def fetch_weather():
 
-weather_response = requests.get(weather_url)
-weather_data = weather_response.json()
+    url = (
+        f"http://api.openweathermap.org/data/2.5/weather"
+        f"?lat={LAT}&lon={LON}"
+        f"&appid=2dfa5687cd16caf681213267018ec6b3"
+        f"&units=metric"
+    )
 
-if "main" not in weather_data:
-    raise Exception("Weather API failed or invalid key")
+    try:
+        res = requests.get(url)
+        data = res.json()
 
-# ========================
-# 2. AQI API (SAFE)
-# ========================
-aqi_url = (
-    f"https://air-quality-api.open-meteo.com/v1/air-quality"
-    f"?latitude={LAT}&longitude={LON}"
-    f"&hourly=pm10,pm2_5,nitrogen_dioxide,sulphur_dioxide,ozone"
-    f"&timezone=auto"
-)
+        if "main" not in data:
+            print("❌ Weather API Error:", data)
+            return None
 
-aqi_response = requests.get(aqi_url)
-aqi_data = aqi_response.json()
+        return {
+            "temperature": data["main"]["temp"],
+            "humidity": data["main"]["humidity"],
+            "pressure": data["main"]["pressure"],
+            "wind_speed": data["wind"]["speed"]
+        }
 
-hourly = aqi_data.get("hourly", {})
-
-pm2_5 = hourly.get("pm2_5", [0])[-1]
-pm10 = hourly.get("pm10", [0])[-1]
-no2 = hourly.get("nitrogen_dioxide", [0])[-1]
-so2 = hourly.get("sulphur_dioxide", [0])[-1]
-o3 = hourly.get("ozone", [0])[-1]
-
-# ========================
-# 3. AQI CALCULATION (FIXED)
-# ========================
-values = [pm2_5, pm10, no2, so2, o3]
-
-# convert safe numeric values
-clean_values = [v for v in values if v is not None]
-
-# ❌ agar bilkul bhi data nahi hai
-if len(clean_values) == 0:
-    print("Skipping row: no valid AQI data")
-
-else:
-    # ✔ safe AQI calculation
-    values = [v if v is not None else 0 for v in values]
-    aqi = max(values)
+    except Exception as e:
+        print("❌ Weather Fetch Error:", e)
+        return None
 
 
-    # ========================
-    # ONLY CREATE RECORD HERE
-    # ========================
-    record = {
-        "time": datetime.now(),
+# =========================
+# FETCH AQI DATA + RETRY
+# =========================
+def fetch_aqi():
+
+    url = (
+        f"http://api.openweathermap.org/data/2.5/air_pollution"
+        f"?lat={LAT}&lon={LON}"
+        f"&appid={OPENWEATHER_KEY}"
+    )
+
+    # 🔥 Retry Logic
+    for attempt in range(2):
+
+        try:
+            res = requests.get(url)
+            data = res.json()
+
+            if "list" in data:
+
+                d = data["list"][0]
+
+                return {
+                    "aqi":  d["main"]["aqi"],
+                    "pm25": d["components"]["pm2_5"],
+                    "pm10": d["components"]["pm10"],
+                    "no2":  d["components"]["no2"],
+                    "co":   d["components"]["co"],
+                    "o3":   d["components"]["o3"],
+                    "so2":  d["components"]["so2"],
+                    "nh3":  d["components"]["nh3"],
+                }
+
+            print(f"⚠ Retry AQI API ({attempt + 1}/2)")
+
+        except Exception as e:
+            print("❌ AQI Fetch Error:", e)
+
+    return None
+
+
+# =========================
+# COLLECT ONE SAMPLE
+# =========================
+def collect_sample():
+
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    weather = fetch_weather()
+    aqi = fetch_aqi()
+
+    # ❌ Skip if API data missing
+    if not weather or not aqi:
+        print(f"[{timestamp}] ❌ Skipped - Missing API Data")
+        return
+
+    # =========================
+    # CREATE RECORD
+    # =========================
+    row = {
+
+        "timestamp": timestamp,
         "city": CITY,
-        "latitude": LAT,
-        "longitude": LON,
-        "temp": weather_data["main"]["temp"],
-        "humidity": weather_data["main"]["humidity"],
-        "pm2_5": pm2_5,
-        "pm10": pm10,
-        "no2": no2,
-        "so2": so2,
-        "o3": o3,
-        "aqi": aqi
+
+        # AQI DATA
+        "aqi":  aqi["aqi"],
+        "pm25": aqi["pm25"],
+        "pm10": aqi["pm10"],
+        "no2":  aqi["no2"],
+        "co":   aqi["co"],
+        "o3":   aqi["o3"],
+        "so2":  aqi["so2"],
+        "nh3":  aqi["nh3"],
+
+        # WEATHER DATA
+        "temperature": weather["temperature"],
+        "humidity": weather["humidity"],
+        "pressure": weather["pressure"],
+        "wind_speed": weather["wind_speed"],
     }
 
-    df_new = pd.DataFrame([record])
+    # =========================
+    # SAVE RAW DATASET
+    # =========================
+    df = pd.DataFrame([row])
 
-    if os.path.exists(file_path):
-        df = pd.read_csv(file_path)
-        df["time"] = pd.to_datetime(df["time"])
-        df = pd.concat([df, df_new], ignore_index=True)
+    if os.path.exists(RAW_FILE):
+        df.to_csv(RAW_FILE, mode="a", header=False, index=False)
     else:
-        df = df_new
+        df.to_csv(RAW_FILE, index=False)
 
-    df.to_csv(file_path, index=False)
+    print(
+        f"[{timestamp}] ✅ Saved | "
+        f"AQI: {aqi['aqi']} | "
+        f"PM2.5: {aqi['pm25']} | "
+        f"Temp: {weather['temperature']}°C"
+    )
 
-    print("✅ Saved valid row only")
+
+# =========================
+# BUILD CLEAN DATASET
+# =========================
+def build_clean_dataset():
+
+    if not os.path.exists(RAW_FILE):
+        print("❌ No raw dataset found")
+        return
+
+    try:
+
+        df = pd.read_csv(RAW_FILE)
+
+        if df.empty:
+            print("❌ Empty dataset")
+            return
+
+        # =========================
+        # CLEANING
+        # =========================
+        df.columns = df.columns.str.strip().str.lower()
+
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+
+        df = df.sort_values("timestamp")
+
+        df = df.drop_duplicates("timestamp")
+
+        # Remove missing important values
+        df = df.dropna(
+            subset=["aqi", "temperature", "humidity"]
+        )
+
+        # =========================
+        # TIME FEATURES
+        # =========================
+        df["hour"] = df["timestamp"].dt.hour
+        df["day_of_week"] = df["timestamp"].dt.dayofweek
+        df["month"] = df["timestamp"].dt.month
+
+        # =========================
+        # LAG FEATURES
+        # =========================
+        df["aqi_lag_1h"] = df["aqi"].shift(1)
+        df["aqi_lag_3h"] = df["aqi"].shift(3)
+
+        # AQI Difference
+        df["aqi_change"] = df["aqi"].diff()
+
+        # Remove lag NaN rows
+        df = df.dropna()
+
+        # =========================
+        # KEEP LAST 3 DAYS ONLY
+        # =========================
+        cutoff = datetime.utcnow() - pd.Timedelta(days=3)
+
+        df = df[df["timestamp"] >= cutoff]
+
+        # =========================
+        # SAVE CLEAN DATASET
+        # =========================
+        df.to_csv(FINAL_FILE, index=False)
+
+        print(f"\n✅ Clean Dataset Saved: {len(df)} rows")
+
+        print(df.tail(3))
+
+    except Exception as e:
+        print("❌ Dataset Build Error:", e)
+
+
+# =========================
+# MAIN
+# =========================
+if __name__ == "__main__":
+
+    collect_sample()
+
+    build_clean_dataset()

@@ -46,19 +46,17 @@ so2 = hourly.get("sulphur_dioxide", [0])[-1]
 o3 = hourly.get("ozone", [0])[-1]
 
 # ========================
-# 3. AQI CALCULATION
+# 3. AQI CALCULATION (FIXED)
 # ========================
+
 values = [pm2_5, pm10, no2, so2, o3]
 
-# 👉 agar sab missing ho to row skip
+# check if ALL are missing (but NO return)
 if all(v is None for v in values):
-    print("Skipping row: no data from API")
-    return
-
-# 👉 None ko 0 se replace (partial missing safe handling)
-values = [v if v is not None else 0 for v in values]
-
-aqi = max(values)
+    aqi = None   # or 0 but better None
+else:
+    values = [v if v is not None else 0 for v in values]
+    aqi = max(values)
 # ========================
 # 4. CREATE RECORD
 # ========================

@@ -16,7 +16,7 @@ file_path = "aqi_dataset.csv"
 # ========================
 # 1. WEATHER API (SAFE)
 # ========================
-weather_url = f"http://api.openweathermap.org/data/2.5/weather?q={"Karachi"}&appid={"1055a336d17d290b5102f6f66e5dcd58"}&units=metric"
+weather_url = "http://api.openweathermap.org/data/2.5/weather?q=Karachi&appid=1055a336d17d290b5102f6f66e5dcd58&units=metric"
 
 weather_response = requests.get(weather_url)
 weather_data = weather_response.json()

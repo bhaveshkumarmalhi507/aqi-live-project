@@ -6,7 +6,7 @@ import os
 # ========================
 # CONFIG
 # ========================
-API_KEY = "YOUR_API_KEY"
+API_KEY = os.getenv("API_KEY")
 CITY = "Karachi"
 LAT = 24.8607
 LON = 67.0011
@@ -14,15 +14,18 @@ LON = 67.0011
 file_path = "aqi_dataset.csv"
 
 # ========================
-# 1. WEATHER API
+# 1. WEATHER API (SAFE)
 # ========================
 weather_url = f"http://api.openweathermap.org/data/2.5/weather?q={"Karachi"}&appid={"1055a336d17d290b5102f6f66e5dcd58"}&units=metric"
 
 weather_response = requests.get(weather_url)
 weather_data = weather_response.json()
 
+if "main" not in weather_data:
+    raise Exception("Weather API failed or invalid key")
+
 # ========================
-# 2. AQI API (OPEN-METEO)
+# 2. AQI API (SAFE)
 # ========================
 aqi_url = (
     f"https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -34,24 +37,21 @@ aqi_url = (
 aqi_response = requests.get(aqi_url)
 aqi_data = aqi_response.json()
 
-hourly = aqi_data["hourly"]
+hourly = aqi_data.get("hourly", {})
+
+pm2_5 = hourly.get("pm2_5", [0])[-1]
+pm10 = hourly.get("pm10", [0])[-1]
+no2 = hourly.get("nitrogen_dioxide", [0])[-1]
+so2 = hourly.get("sulphur_dioxide", [0])[-1]
+o3 = hourly.get("ozone", [0])[-1]
 
 # ========================
-# 3. LATEST POLLUTANTS
-# ========================
-pm2_5 = hourly["pm2_5"][-1]
-pm10 = hourly["pm10"][-1]
-no2 = hourly["nitrogen_dioxide"][-1]
-so2 = hourly["sulphur_dioxide"][-1]
-o3 = hourly["ozone"][-1]
-
-# ========================
-# 4. AQI CALCULATION
+# 3. AQI CALCULATION
 # ========================
 aqi = max(pm2_5, pm10, no2, so2, o3)
 
 # ========================
-# 5. CREATE RECORD
+# 4. CREATE RECORD
 # ========================
 record = {
     "time": datetime.now(),
@@ -69,7 +69,7 @@ record = {
 }
 
 # ========================
-# 6. LOAD EXISTING DATA
+# 5. LOAD EXISTING DATA
 # ========================
 df_new = pd.DataFrame([record])
 
@@ -81,14 +81,14 @@ else:
     df = df_new
 
 # ========================
-# 7. KEEP ONLY LAST 3 DAYS DATA
+# 6. KEEP LAST 3 DAYS ONLY
 # ========================
 cutoff = datetime.now() - pd.Timedelta(days=3)
 df = df[df["time"] >= cutoff]
 
 # ========================
-# 8. SAVE BACK (NO DELETE ISSUE)
+# 7. SAVE
 # ========================
 df.to_csv(file_path, index=False)
 
-print("✅ 3-Day Live Dataset Updated")
+print("✅ 3-Day Live Dataset Updated Successfully")

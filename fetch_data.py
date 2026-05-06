@@ -48,8 +48,9 @@ o3 = hourly.get("ozone", [0])[-1]
 # ========================
 # 3. AQI CALCULATION
 # ========================
-aqi = max(pm2_5, pm10, no2, so2, o3)
-
+values = [pm2_5, pm10, no2, so2, o3]
+values = [v for v in values if v is not None]
+aqi = max(values) if values else 0
 # ========================
 # 4. CREATE RECORD
 # ========================

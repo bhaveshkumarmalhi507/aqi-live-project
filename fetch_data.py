@@ -50,51 +50,42 @@ o3 = hourly.get("ozone", [0])[-1]
 # ========================
 values = [pm2_5, pm10, no2, so2, o3]
 
-aqi = None  # default (IMPORTANT)
+# ❌ IF ALL EMPTY → DO NOT SAVE ANYTHING
+if all(v is None for v in values):
+    print("Skipping row: API returned no data")
 
-# ❌ agar sab missing hain → skip
-if not all(v is None for v in values):
+else:
+    # ✔ calculate AQI safely
     values = [v if v is not None else 0 for v in values]
     aqi = max(values)
-# ========================
-# 4. CREATE RECORD
-# ========================
-record = {
-    "time": datetime.now(),
-    "city": CITY,
-    "latitude": LAT,
-    "longitude": LON,
-    "temp": weather_data["main"]["temp"],
-    "humidity": weather_data["main"]["humidity"],
-    "pm2_5": pm2_5,
-    "pm10": pm10,
-    "no2": no2,
-    "so2": so2,
-    "o3": o3,
-    "aqi": aqi
-}
 
-# ========================
-# 5. LOAD EXISTING DATA
-# ========================
-df_new = pd.DataFrame([record])
+    # ========================
+    # ONLY CREATE RECORD HERE
+    # ========================
+    record = {
+        "time": datetime.now(),
+        "city": CITY,
+        "latitude": LAT,
+        "longitude": LON,
+        "temp": weather_data["main"]["temp"],
+        "humidity": weather_data["main"]["humidity"],
+        "pm2_5": pm2_5,
+        "pm10": pm10,
+        "no2": no2,
+        "so2": so2,
+        "o3": o3,
+        "aqi": aqi
+    }
 
-if os.path.exists(file_path):
-    df = pd.read_csv(file_path)
-    df["time"] = pd.to_datetime(df["time"])
-    df = pd.concat([df, df_new], ignore_index=True)
-else:
-    df = df_new
+    df_new = pd.DataFrame([record])
 
-# ========================
-# 6. KEEP LAST 3 DAYS ONLY
-# ========================
-cutoff = datetime.now() - pd.Timedelta(days=3)
-df = df[df["time"] >= cutoff]
+    if os.path.exists(file_path):
+        df = pd.read_csv(file_path)
+        df["time"] = pd.to_datetime(df["time"])
+        df = pd.concat([df, df_new], ignore_index=True)
+    else:
+        df = df_new
 
-# ========================
-# 7. SAVE
-# ========================
-df.to_csv(file_path, index=False)
+    df.to_csv(file_path, index=False)
 
-print("✅ 3-Day Live Dataset Updated Successfully")
+    print("✅ Saved valid row only")
